@@ -1,0 +1,176 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Layout from '../../components/layout/Layout';
+import StatusBadge from '../../components/common/StatusBadge';
+import API from '../../api/axios';
+
+const STATUSES = ['','New','Contacted','Documents Pending','Documents Received','Verification','Approved','Rejected','Completed','Archived'];
+
+const SchoolsPage = ({ role = 'superadmin' }) => {
+  const navigate        = useNavigate();
+  const [schools, setSchools]     = useState([]);
+  const [total,   setTotal]       = useState(0);
+  const [loading, setLoading]     = useState(true);
+  const [page,    setPage]        = useState(1);
+  const [search,  setSearch]      = useState('');
+  const [searchIn,setSearchIn]    = useState('');
+  const [status,  setStatus]      = useState('');
+  const limit = 10;
+  const accent = role === 'superadmin' ? '#1e3a5f' : '#1a3a5c';
+
+  const fetchSchools = useCallback(async () => {
+    setLoading(true);
+    try {
+      const p = new URLSearchParams({ page, limit, sortBy:'createdAt', order:'desc' });
+      if (search) p.set('search', search);
+      if (status) p.set('status', status);
+      const res = await API.get(`/schools?${p}`);
+      setSchools(res.data.schools);
+      setTotal(res.data.total);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, status]);
+
+  useEffect(() => { fetchSchools(); }, [fetchSchools]);
+
+  const handleSearch = e => { e.preventDefault(); setSearch(searchIn); setPage(1); };
+  const totalPages   = Math.ceil(total / limit);
+  const basePath     = `/${role === 'superadmin' ? 'superadmin' : 'admin'}`;
+
+  return (
+    <Layout>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'1.25rem', flexWrap:'wrap', gap:'0.75rem' }}>
+        <div>
+          <h2 style={{ margin:'0 0 0.2rem', fontSize:'1.1rem', fontWeight:'800', color:'#1e293b' }}>
+            {role === 'superadmin' ? 'All Schools' : 'My Assigned Schools'}
+          </h2>
+          <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b' }}>{total} school{total !== 1 ? 's' : ''}</p>
+        </div>
+        {role === 'superadmin' && (
+          <button onClick={() => navigate(`${basePath}/schools/new`)}
+            style={{ background: accent, color:'#fff', border:'none', borderRadius:'8px', padding:'0.6rem 1.1rem', fontSize:'0.875rem', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
+            + Add School
+          </button>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:'0.75rem', marginBottom:'1rem', flexWrap:'wrap' }}>
+        <form onSubmit={handleSearch} style={{ display:'flex', gap:'0.5rem', flex:1, minWidth:'260px' }}>
+          <input type="text" placeholder="Search name, email, city, district..."
+            value={searchIn} onChange={e => setSearchIn(e.target.value)}
+            style={{ flex:1, padding:'0.55rem 0.875rem', border:'1.5px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', outline:'none', fontFamily:'inherit' }} />
+          <button type="submit" style={{ background: accent, color:'#fff', border:'none', borderRadius:'8px', padding:'0.55rem 1rem', fontSize:'0.875rem', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>Search</button>
+          {search && <button type="button" onClick={() => { setSearch(''); setSearchIn(''); setPage(1); }} style={{ background:'#f1f5f9', color:'#64748b', border:'none', borderRadius:'8px', padding:'0.55rem 0.75rem', fontSize:'0.875rem', cursor:'pointer', fontFamily:'inherit' }}>✕</button>}
+        </form>
+        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
+          style={{ padding:'0.55rem 0.875rem', border:'1.5px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', outline:'none', background:'#fff', fontFamily:'inherit', minWidth:'160px' }}>
+          {STATUSES.map(s => <option key={s} value={s}>{s || 'All Statuses'}</option>)}
+        </select>
+      </div>
+
+      {/* Table */}
+      <div style={{ background:'#fff', borderRadius:'12px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)', border:'1px solid #f1f5f9', overflow:'hidden' }}>
+        {loading ? (
+          <div style={{ textAlign:'center', padding:'3rem', color:'#94a3b8' }}>Loading schools...</div>
+        ) : schools.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'4rem', color:'#94a3b8', display:'flex', flexDirection:'column', alignItems:'center', gap:'0.75rem' }}>
+            <span style={{ fontSize:'2.5rem' }}>🏫</span>
+            <div style={{ fontWeight:'600', color:'#475569' }}>No schools found</div>
+            <div style={{ fontSize:'0.82rem' }}>{search ? `No results for "${search}"` : 'Try adjusting your filters'}</div>
+          </div>
+        ) : (
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#f8fafc' }}>
+                  {['School','Contact','Location','Board','Assigned Admin','Status','Added',''].map(h => (
+                    <th key={h} style={{ textAlign:'left', padding:'0.75rem 1rem', fontSize:'0.68rem', fontWeight:'700', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:'1px solid #f1f5f9', whiteSpace:'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {schools.map((school, i) => (
+                  <tr key={school._id}
+                    style={{ borderBottom: i < schools.length-1 ? '1px solid #f8fafc' : 'none', cursor:'pointer', transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background='#fafcff'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                    onClick={() => navigate(`${basePath}/schools/${school._id}`)}
+                  >
+                    <td style={{ padding:'0.875rem 1rem' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'0.625rem' }}>
+                        <div style={{ width:'32px', height:'32px', borderRadius:'7px', background:'#e8f0f9', color: accent, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'800', fontSize:'0.9rem', flexShrink:0 }}>
+                          {school.schoolName[0]}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:'0.85rem', fontWeight:'600', color:'#1e293b' }}>{school.schoolName}</div>
+                          <div style={{ fontSize:'0.7rem', color:'#94a3b8' }}>{school.registrationNumber || 'No reg. no.'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem' }}>
+                      <div style={{ fontSize:'0.8rem', color:'#374151' }}>{school.email}</div>
+                      <div style={{ fontSize:'0.72rem', color:'#94a3b8' }}>{school.phone}</div>
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem', fontSize:'0.8rem', color:'#374151' }}>
+                      <div>{school.address?.city}</div>
+                      <div style={{ fontSize:'0.72rem', color:'#94a3b8' }}>{school.address?.district}, {school.address?.state}</div>
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem' }}>
+                      <div style={{ fontSize:'0.8rem', color:'#374151' }}>{school.board || '—'}</div>
+                      <div style={{ fontSize:'0.72rem', color:'#94a3b8' }}>{school.schoolType || ''}</div>
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem', fontSize:'0.8rem', color: school.assignedAdmin ? '#374151' : '#94a3b8', fontStyle: school.assignedAdmin ? 'normal' : 'italic' }}>
+                      {school.assignedAdmin?.name || 'Unassigned'}
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem' }}><StatusBadge status={school.currentStatus} size="sm" /></td>
+                    <td style={{ padding:'0.875rem 1rem', fontSize:'0.75rem', color:'#94a3b8', whiteSpace:'nowrap' }}>
+                      {new Date(school.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}
+                    </td>
+                    <td style={{ padding:'0.875rem 1rem' }}>
+                      <button onClick={e => { e.stopPropagation(); navigate(`${basePath}/schools/${school._id}`); }}
+                        style={{ background:'#f1f5f9', border:'none', borderRadius:'6px', padding:'0.3rem 0.75rem', fontSize:'0.78rem', color: accent, fontWeight:'600', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                        Open →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.875rem 1rem', borderTop:'1px solid #f1f5f9', background:'#fafcff' }}>
+            <span style={{ fontSize:'0.78rem', color:'#94a3b8' }}>Showing {(page-1)*limit+1}–{Math.min(page*limit,total)} of {total}</span>
+            <div style={{ display:'flex', gap:'0.5rem', alignItems:'center' }}>
+              <button disabled={page===1} onClick={() => setPage(p=>p-1)}
+                style={{ padding:'0.35rem 0.75rem', border:'1px solid #e2e8f0', borderRadius:'6px', background: page===1?'#f8fafc':'#fff', color: page===1?'#94a3b8':'#374151', cursor: page===1?'not-allowed':'pointer', fontSize:'0.82rem', fontFamily:'inherit' }}>
+                ← Prev
+              </button>
+              {Array.from({length:Math.min(totalPages,5)},(_,i)=>i+1).map(p=>(
+                <button key={p} onClick={() => setPage(p)}
+                  style={{ padding:'0.35rem 0.625rem', border:'1px solid #e2e8f0', borderRadius:'6px', background: page===p ? accent : '#fff', color: page===p?'#fff':'#374151', cursor:'pointer', fontSize:'0.82rem', fontFamily:'inherit', fontWeight: page===p?'700':'400', minWidth:'30px' }}>
+                  {p}
+                </button>
+              ))}
+              <button disabled={page===totalPages} onClick={() => setPage(p=>p+1)}
+                style={{ padding:'0.35rem 0.75rem', border:'1px solid #e2e8f0', borderRadius:'6px', background: page===totalPages?'#f8fafc':'#fff', color: page===totalPages?'#94a3b8':'#374151', cursor: page===totalPages?'not-allowed':'pointer', fontSize:'0.82rem', fontFamily:'inherit' }}>
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+};
+
+export const SuperAdminSchools = () => <SchoolsPage role="superadmin" />;
+export const AdminSchools      = () => <SchoolsPage role="admin" />;
+
+export default SchoolsPage;

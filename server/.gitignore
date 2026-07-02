@@ -52,9 +52,3 @@ coverage/
 # MongoDB dump files (if you ever export local backups)
 *.bson
 dump/
-
-node_modules/
-server/node_modules/
-client/node_modules/
-server/.env
-client/.env
