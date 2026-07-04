@@ -12,10 +12,11 @@ const NAV = {
     { label: 'Settings',      path: '/superadmin/settings',  icon: '◎' },
   ],
   admin: [
-    { label: 'Dashboard',     path: '/admin/dashboard',      icon: '▦' },
-    { label: 'My Schools',    path: '/admin/schools',        icon: '⊞' },
-    { label: 'Reports',       path: '/admin/reports',        icon: '◫' },
-    { label: 'Activity Logs', path: '/admin/logs',           icon: '≡' },
+    { label: 'Dashboard',     path: '/admin/dashboard',  icon: '▦' },
+    { label: 'My Schools',    path: '/admin/schools',    icon: '⊞' },
+    { label: 'Messages',      path: '/admin/messages',   icon: '◉' },
+    { label: 'Reports',       path: '/admin/reports',    icon: '◫' },
+    { label: 'Activity Logs', path: '/admin/logs',       icon: '≡' },
   ],
   school_user: [
     { label: 'Dashboard',     path: '/school/dashboard',     icon: '▦' },

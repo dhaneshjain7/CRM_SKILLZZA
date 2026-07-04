@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import StatusBadge from '../../components/common/StatusBadge';
 import API from '../../api/axios';
+import AddSchoolModal from '../../components/school/AddSchoolModal';
 
 const STATUSES = ['','New','Contacted','Documents Pending','Documents Received','Verification','Approved','Rejected','Completed','Archived'];
 
@@ -15,6 +16,7 @@ const SchoolsPage = ({ role = 'superadmin' }) => {
   const [search,  setSearch]      = useState('');
   const [searchIn,setSearchIn]    = useState('');
   const [status,  setStatus]      = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
   const limit = 10;
   const accent = role === 'superadmin' ? '#1e3a5f' : '#1a3a5c';
 
@@ -49,12 +51,10 @@ const SchoolsPage = ({ role = 'superadmin' }) => {
           </h2>
           <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b' }}>{total} school{total !== 1 ? 's' : ''}</p>
         </div>
-        {role === 'superadmin' && (
-          <button onClick={() => navigate(`${basePath}/schools/new`)}
-            style={{ background: accent, color:'#fff', border:'none', borderRadius:'8px', padding:'0.6rem 1.1rem', fontSize:'0.875rem', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
-            + Add School
-          </button>
-        )}
+        <button onClick={() => setShowAddModal(true)}
+          style={{ background: accent, color:'#fff', border:'none', borderRadius:'8px', padding:'0.6rem 1.1rem', fontSize:'0.875rem', fontWeight:'600', cursor:'pointer', fontFamily:'inherit' }}>
+          + Add School
+        </button>
       </div>
 
       {/* Filters */}
@@ -166,6 +166,14 @@ const SchoolsPage = ({ role = 'superadmin' }) => {
           </div>
         )}
       </div>
+
+      {/* Add School Modal */}
+      {showAddModal && (
+        <AddSchoolModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={() => { setShowAddModal(false); fetchSchools(); }}
+        />
+      )}
     </Layout>
   );
 };

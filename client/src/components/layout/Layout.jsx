@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import NotificationBell from '../common/NotificationBell';
 import { useAuth } from '../../context/AuthContext';
 
 const TITLES = {
@@ -12,6 +13,7 @@ const TITLES = {
   '/superadmin/settings':  'Settings',
   '/admin/dashboard':      'Dashboard',
   '/admin/schools':        'My Schools',
+  '/admin/messages':       'Messages',
   '/admin/reports':        'Reports',
   '/admin/logs':           'Activity Logs',
   '/school/dashboard':     'My Dashboard',
@@ -30,15 +32,12 @@ const Layout = ({ children }) => {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const location = useLocation();
   const { user } = useAuth();
-  const title  = TITLES[location.pathname] || 'Skillzza CRM';
-  const sideW  = collapsed ? 64 : 240;
-  const accent = ROLE_ACCENT[user?.role] || '#1e3a5f';
+  const title    = TITLES[location.pathname] || 'Skillzza CRM';
+  const sideW    = collapsed ? 64 : 240;
+  const accent   = ROLE_ACCENT[user?.role] || '#1e3a5f';
 
-  // Auto-collapse on small screens
   useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth < 900) setCollapsed(true);
-    };
+    const onResize = () => { if (window.innerWidth < 900) setCollapsed(true); };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -54,11 +53,17 @@ const Layout = ({ children }) => {
           <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
             <h1 style={{ margin:0, fontSize:'1.1rem', fontWeight:'700', color:'#1e293b' }}>{title}</h1>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
+
+          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
             <span style={{ fontSize:'0.75rem', color:'#94a3b8' }}>
               {new Date().toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' })}
             </span>
-            <div style={{ width:'32px', height:'32px', borderRadius:'50%', background: accent, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'700', fontSize:'0.875rem' }}>
+
+            {/* Notification Bell */}
+            <NotificationBell />
+
+            {/* Avatar */}
+            <div style={{ width:'32px', height:'32px', borderRadius:'50%', background: accent, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'700', fontSize:'0.875rem', cursor:'default' }}>
               {user?.name?.[0]?.toUpperCase()}
             </div>
           </div>

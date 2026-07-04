@@ -1,4 +1,5 @@
 const { School, SchoolStatusHistory, AuditLog, ActivityLog, User } = require('../models');
+const { notifyStatusUpdate, notifyAdminAssigned } = require('../utils/notificationService');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -222,9 +223,18 @@ const updateSchool = async (req, res) => {
       return res.status(404).json({ success: false, message: 'School not found.' });
     }
 
-    // Fields that are NOT updatable via this endpoint
+    // Fields that are NEVER updatable via this endpoint
     const blocked = ['currentStatus', 'assignedAdmin', 'schoolUser', 'isDeleted', 'isArchived'];
     blocked.forEach((f) => delete req.body[f]);
+
+    // School user can only update their own profile fields — not admin-only fields
+    if (req.user.role === 'school_user') {
+      const allowedForSchool = ['schoolName', 'registrationNumber', 'email', 'phone', 'altPhone', 'website',
+        'address', 'principal', 'management', 'establishedYear', 'studentCount', 'staffCount', 'logo'];
+      Object.keys(req.body).forEach(key => {
+        if (!allowedForSchool.includes(key)) delete req.body[key];
+      });
+    }
 
     // Track changes for audit
     const changes = {};
