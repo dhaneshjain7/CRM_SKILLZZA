@@ -1,7 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../../components/layout/Layout';
 import StatusBadge from '../../components/common/StatusBadge';
 import API from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { exportPDF, exportExcel, exportWord } from '../../utils/exportReport';
+
+const EXPORT_FORMATS = [
+  { key: 'pdf',   label: 'PDF',   icon: '📄' },
+  { key: 'excel', label: 'Excel', icon: '📊' },
+  { key: 'word',  label: 'Word',  icon: '📝' },
+  { key: 'csv',   label: 'CSV',   icon: '📃' },
+];
 
 const EVENT_ICONS = {
   'School Created':      '🏫',
@@ -24,12 +33,25 @@ const EVENT_COLORS = {
 };
 
 const AuditTrail = () => {
+  const { user } = useAuth();
   const [logs,    setLogs]    = useState([]);
   const [total,   setTotal]   = useState(0);
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
   const [filters, setFilters] = useState({ eventType: '', fromDate: '', toDate: '', schoolSearch: '' });
+  const [exporting,  setExporting]  = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef(null);
   const limit = 25;
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -48,19 +70,41 @@ const AuditTrail = () => {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-  const handleExportCSV = async () => {
-    const token = localStorage.getItem('accessToken');
-    const params = new URLSearchParams({ format: 'csv', limit: 1000, ...Object.fromEntries(Object.entries(filters).filter(([,v]) => v)) });
-    const res  = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/audit-trail?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `audit_trail_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExport = async (fmt) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ limit: 10000, ...Object.fromEntries(Object.entries(filters).filter(([,v]) => v)) });
+
+      if (fmt === 'csv') {
+        params.set('format', 'csv');
+        const token = localStorage.getItem('accessToken');
+        const res  = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/audit-trail?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `audit_trail_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      const res  = await API.get(`/reports/audit-trail?${params}`);
+      const rows = res.data?.rows || [];
+      if (rows.length === 0) { alert('No audit records available to export.'); return; }
+
+      if (fmt === 'pdf')   exportPDF(rows, 'Audit Trail', 'audit_trail');
+      if (fmt === 'excel') exportExcel(rows, 'Audit Trail', 'audit_trail');
+      if (fmt === 'word')  exportWord(rows, 'Audit Trail', 'audit_trail');
+    } catch (e) {
+      console.error(e);
+      alert('Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -75,11 +119,30 @@ const AuditTrail = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', fontWeight: '800', color: '#1e293b' }}>📋 Audit Trail</h2>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Complete searchable history of all platform changes · {total} records</p>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+            {user?.role === 'admin'
+              ? 'Activity on your assigned schools and your own actions'
+              : 'Complete searchable history of all platform changes'} · {total} records
+          </p>
         </div>
-        <button onClick={handleExportCSV} style={{ padding: '0.55rem 1.1rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'inherit' }}>
-          ⬇ Export CSV
-        </button>
+        <div ref={exportRef} style={{ position: 'relative' }}>
+          <button onClick={() => setExportOpen(o => !o)} disabled={exporting}
+            style={{ padding: '0.55rem 1.1rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ⬇ {exporting ? 'Exporting...' : 'Export Report'} <span style={{ fontSize: '0.6rem' }}>▼</span>
+          </button>
+          {exportOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: '150px', padding: '4px', overflow: 'hidden' }}>
+              {EXPORT_FORMATS.map(f => (
+                <button key={f.key} onClick={() => handleExport(f.key)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '0.55rem 0.75rem', border: 'none', borderRadius: '7px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', background: 'transparent', color: '#374151', fontSize: '0.8rem', fontWeight: '600' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <span>{f.icon}</span> {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filters */}

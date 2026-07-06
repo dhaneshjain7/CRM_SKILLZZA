@@ -323,6 +323,14 @@ const auditTrailReport = async (req, res) => {
     const { schoolId, eventType, fromDate, toDate, page = 1, limit = 50, format = 'json' } = req.query;
 
     const filter = {};
+    // Admins see events on their assigned schools plus their own actions
+    if (req.user.role === 'admin') {
+      const assigned = await School.find({ assignedAdmin: req.user._id }).select('_id');
+      filter.$or = [
+        { school:      { $in: assigned.map(s => s._id) } },
+        { performedBy: req.user._id },
+      ];
+    }
     if (schoolId)  filter.school    = schoolId;
     if (eventType) filter.eventType = eventType;
     if (fromDate || toDate) {
@@ -381,9 +389,16 @@ const activityLogsReport = async (req, res) => {
     const { page = 1, limit = 50, action, userId, fromDate, toDate, format = 'json' } = req.query;
 
     const filter = {};
-    if (req.user.role === 'admin') filter.user = req.user._id;
+    // Admins see their own actions plus any activity on their assigned schools
+    if (req.user.role === 'admin') {
+      const assigned = await School.find({ assignedAdmin: req.user._id }).select('_id');
+      filter.$or = [
+        { user:          req.user._id },
+        { relatedSchool: { $in: assigned.map(s => s._id) } },
+      ];
+    }
     if (action)   filter.action    = action;
-    if (userId)   filter.user      = userId;
+    if (userId && req.user.role !== 'admin') filter.user = userId;
     if (fromDate || toDate) {
       filter.createdAt = {};
       if (fromDate) filter.createdAt.$gte = new Date(fromDate);

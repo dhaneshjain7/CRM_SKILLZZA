@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Layout from '../../components/layout/Layout';
 import StatusBadge from '../../components/common/StatusBadge';
 import API from '../../api/axios';
+import { exportPDF, exportExcel, exportWord } from '../../utils/exportReport';
 
 const REPORTS = [
   { key: 'schools',       label: 'My Schools Report',    icon: '🏫', desc: 'All assigned schools with status and details' },
@@ -11,11 +12,30 @@ const REPORTS = [
   { key: 'activity-logs', label: 'Activity Logs',        icon: '⏱',  desc: 'Your activity history' },
 ];
 
+const EXPORT_FORMATS = [
+  { key: 'pdf',   label: 'PDF',   icon: '📄' },
+  { key: 'excel', label: 'Excel', icon: '📊' },
+  { key: 'word',  label: 'Word',  icon: '📝' },
+  { key: 'csv',   label: 'CSV',   icon: '📃' },
+];
+
 const AdminReports = () => {
-  const [active,  setActive]  = useState('schools');
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ status: '', fromDate: '', toDate: '', months: 6 });
+  const [active,     setActive]     = useState('schools');
+  const [data,       setData]       = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [exporting,  setExporting]  = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [filters,    setFilters]    = useState({ status: '', fromDate: '', toDate: '', months: 6 });
+  const exportRef = useRef(null);
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
 
   const fetchReport = async (type = active, fmt = 'json') => {
     setLoading(true);
@@ -42,6 +62,30 @@ const AdminReports = () => {
       setData(res.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleExport = async (fmt) => {
+    setExportOpen(false);
+    if (fmt === 'csv') { fetchReport(active, 'csv'); return; }
+
+    setExporting(true);
+    try {
+      // Fetch full dataset (limit overrides pagination on activity-logs)
+      const params = new URLSearchParams({ limit: 10000, ...Object.fromEntries(Object.entries(filters).filter(([,v]) => v)) });
+      const res    = await API.get(`/reports/${active}?${params}`);
+      const rows   = res.data?.rows || [];
+      if (rows.length === 0) { alert('No data available to export for this report.'); return; }
+
+      const label = REPORTS.find(r => r.key === active)?.label || active;
+      if (fmt === 'pdf')   exportPDF(rows, label, active);
+      if (fmt === 'excel') exportExcel(rows, label, active);
+      if (fmt === 'word')  exportWord(rows, label, active);
+    } catch (e) {
+      console.error(e);
+      alert('Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   useEffect(() => { setData(null); fetchReport(active); }, [active]);
@@ -74,7 +118,24 @@ const AdminReports = () => {
                 <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{currentReport?.desc}</div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => fetchReport(active, 'csv')} style={{ padding: '0.5rem 1rem', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: '#475569', fontFamily: 'inherit' }}>⬇ CSV</button>
+                <div ref={exportRef} style={{ position: 'relative' }}>
+                  <button onClick={() => setExportOpen(o => !o)} disabled={loading || exporting}
+                    style={{ padding: '0.5rem 1rem', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: '#475569', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⬇ {exporting ? 'Exporting...' : 'Export Report'} <span style={{ fontSize: '0.6rem' }}>▼</span>
+                  </button>
+                  {exportOpen && (
+                    <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: '150px', padding: '4px', overflow: 'hidden' }}>
+                      {EXPORT_FORMATS.map(f => (
+                        <button key={f.key} onClick={() => handleExport(f.key)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '0.55rem 0.75rem', border: 'none', borderRadius: '7px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', background: 'transparent', color: '#374151', fontSize: '0.8rem', fontWeight: '600' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <span>{f.icon}</span> {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button onClick={() => fetchReport(active)} disabled={loading} style={{ padding: '0.5rem 1rem', background: '#1a3a5c', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: '#fff', fontFamily: 'inherit' }}>{loading ? '...' : '↻ Refresh'}</button>
               </div>
             </div>
