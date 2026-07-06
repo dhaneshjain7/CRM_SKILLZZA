@@ -39,18 +39,23 @@ const StatusDonut = ({ counts, total }) => {
     <div style={{ display:'flex', alignItems:'center', gap:'1.5rem', flexWrap:'wrap' }}>
       <svg width="120" height="120" viewBox="0 0 120 120">
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
-        {entries.map(([status, count]) => {
-          const pct = count / total;
-          const dasharray = `${pct * circumference} ${circumference}`;
-          const offset = -(cumulative * circumference) + circumference * 0.25;
-          cumulative += pct;
-          return (
-            <circle key={status} cx={cx} cy={cy} r={radius} fill="none"
-              stroke={STATUS_COLORS[status] || '#94a3b8'} strokeWidth={stroke}
-              strokeDasharray={dasharray} strokeDashoffset={offset}
-              style={{ transition:'all 0.5s' }} />
-          );
-        })}
+        {/* Rotate -90deg so slices start at 12 o'clock, then stack sequentially */}
+        <g transform={`rotate(-90 ${cx} ${cy})`}>
+          {entries.map(([status, count]) => {
+            const pct = count / total;
+            const arcLength = pct * circumference;
+            const dasharray  = `${arcLength} ${circumference - arcLength}`;
+            const dashoffset = -(cumulative * circumference);
+            cumulative += pct;
+            return (
+              <circle key={status} cx={cx} cy={cy} r={radius} fill="none"
+                stroke={STATUS_COLORS[status] || '#94a3b8'} strokeWidth={stroke}
+                strokeDasharray={dasharray} strokeDashoffset={dashoffset}
+                strokeLinecap="butt"
+                style={{ transition:'all 0.5s' }} />
+            );
+          })}
+        </g>
         <text x={cx} y={cy-4} textAnchor="middle" fontSize="14" fontWeight="800" fill="#1e293b">{total}</text>
         <text x={cx} y={cy+12} textAnchor="middle" fontSize="8" fill="#94a3b8">SCHOOLS</text>
       </svg>
@@ -79,15 +84,17 @@ const SuperAdminDashboard = () => {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [statsRes, schoolsRes] = await Promise.all([
+        const [statsRes, schoolsRes, growthRes] = await Promise.all([
           API.get('/schools/stats'),
           API.get('/schools?limit=6&sortBy=createdAt&order=desc'),
+          API.get('/reports/growth?months=6'),
         ]);
         setStats(statsRes.data.stats);
         setSchools(schoolsRes.data.schools);
-        // Mock monthly data from real total
-        const total = statsRes.data.stats?.total || 0;
-        setActivity(genMonthlyData(total));
+
+        // Real monthly data from growth report
+        const rows = growthRes.data.rows || [];
+        setActivity(rows.map(r => ({ label: r['Month'], count: r['Added'] })));
       } catch (err) {
         console.error(err);
       } finally {
@@ -97,20 +104,14 @@ const SuperAdminDashboard = () => {
     fetchAll();
   }, [refresh]);
 
-  const genMonthlyData = (total) => {
-    const months = ['Aug','Sep','Oct','Nov','Dec','Jan'];
-    return months.map((label, i) => ({
-      label,
-      count: i === 5 ? total : Math.max(0, Math.floor(total * (0.3 + i * 0.12))),
-    }));
-  };
-
-  const sc    = stats?.statusCounts || {};
-  const total = stats?.total || 0;
+  const sc         = stats?.statusCounts || {};
+  const total      = stats?.total || 0;
+  const totalAdmins= stats?.totalAdmins || 0;
   const inProgress = (sc['Contacted']||0)+(sc['Documents Pending']||0)+(sc['Documents Received']||0)+(sc['Verification']||0);
 
   const STATS = [
     { label:'Total Schools',  value: total,              icon:'🏫', color:'#1e3a5f', bg:'#e8f0f9', sub:'All time' },
+    { label:'Total Admins',   value: totalAdmins,        icon:'👥', color:'#6d28d9', bg:'#ede9fe', sub:'Active administrators' },
     { label:'New',            value: sc['New']||0,        icon:'🆕', color:'#1d4ed8', bg:'#dbeafe', sub:'Awaiting contact' },
     { label:'In Progress',    value: inProgress,          icon:'⏳', color:'#92400e', bg:'#fef3c7', sub:'Active pipeline' },
     { label:'Approved',       value: sc['Approved']||0,   icon:'✅', color:'#065f46', bg:'#d1fae5', sub:'Successfully verified' },

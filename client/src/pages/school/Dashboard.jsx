@@ -181,8 +181,12 @@ const SchoolDashboard = () => {
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'0.75rem', flexShrink:0 }}>
                 <svg width="72" height="72" viewBox="0 0 72 72">
                   <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" />
-                  <circle cx="36" cy="36" r="28" fill="none" stroke="#fff" strokeWidth="8"
-                    strokeDasharray={`${(completion/100)*175.9} 175.9`} strokeDashoffset="43.98" strokeLinecap="round" />
+                  {completion >= 100 ? (
+                    <circle cx="36" cy="36" r="28" fill="none" stroke="#fff" strokeWidth="8" />
+                  ) : (
+                    <circle cx="36" cy="36" r="28" fill="none" stroke="#fff" strokeWidth="8"
+                      strokeDasharray={`${(completion/100)*175.9} 175.9`} strokeDashoffset="43.98" strokeLinecap="round" />
+                  )}
                   <text x="36" y="40" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">{completion}%</text>
                 </svg>
                 <div style={{ fontSize:'0.65rem', color:'rgba(255,255,255,0.6)' }}>Profile</div>

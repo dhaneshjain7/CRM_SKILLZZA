@@ -4,6 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import API from '../../api/axios';
+import AttachmentBubble, { getFileCategory } from '../../components/chat/AttachmentBubble';
+
+const ACCEPT_TYPES = '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx';
+const PENDING_FILE_ICONS = { image: '🖼️', pdf: '📕', word: '📘', excel: '📗', other: '📎' };
 
 const AdminMessages = () => {
   const { user }                             = useAuth();
@@ -16,17 +20,18 @@ const AdminMessages = () => {
   const [sending,       setSending]          = useState(false);
   const [otherTyping,   setOtherTyping]      = useState(false);
   const [search,        setSearch]           = useState('');
+  const [pendingFile,   setPendingFile]      = useState(null);
+  const [fileError,     setFileError]        = useState('');
   const bottomRef  = useRef(null);
   const typingRef  = useRef(null);
   const inputRef   = useRef(null);
+  const fileRef    = useRef(null);
 
-  // Load conversations
   useEffect(() => {
     const fetchConvos = async () => {
       try {
         const res = await API.get('/messages/conversations');
         setConversations(res.data.conversations || []);
-        // Auto-open first conversation
         if (res.data.conversations?.length > 0) {
           openConversation(res.data.conversations[0].school);
         }
@@ -42,16 +47,13 @@ const AdminMessages = () => {
     try {
       const res = await API.get(`/messages/school/${school._id}?limit=100`);
       setMessages(res.data.messages || []);
-      // Refresh conversations to update unread counts
       const convRes = await API.get('/messages/conversations');
       setConversations(convRes.data.conversations || []);
     } catch (e) { console.error(e); }
   };
 
-  // Scroll to bottom
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // Socket listeners
   useEffect(() => {
     if (!socket || !activeSchool) return;
 
@@ -62,26 +64,52 @@ const AdminMessages = () => {
         setTimeout(() => API.put(`/messages/${msg._id}/read`).catch(() => {}), 800);
       }
     };
+    const onTyping = ({ userId, isTyping }) => { if (userId !== user._id) setOtherTyping(isTyping); };
 
-    const onTyping = ({ userId, isTyping }) => {
-      if (userId !== user._id) setOtherTyping(isTyping);
-    };
-
-    socket.on('new_message',  onNewMsg);
-    socket.on('user_typing',  onTyping);
+    socket.on('new_message', onNewMsg);
+    socket.on('user_typing', onTyping);
     return () => { socket.off('new_message', onNewMsg); socket.off('user_typing', onTyping); };
   }, [socket, activeSchool, user]);
 
+  // ── File selection ─────────────────────────────────────────────────────────
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileError('');
+    if (file.size > 15 * 1024 * 1024) {
+      setFileError('File too large. Max size is 15MB.');
+      return;
+    }
+    setPendingFile(file);
+  };
+
+  const clearPendingFile = () => {
+    setPendingFile(null);
+    setFileError('');
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!content.trim() || !activeSchool || sending) return;
+    if ((!content.trim() && !pendingFile) || !activeSchool || sending) return;
     setSending(true);
     try {
-      await API.post('/messages/send', { schoolId: activeSchool._id, content: content.trim() });
+      const form = new FormData();
+      form.append('schoolId', activeSchool._id);
+      if (content.trim()) form.append('content', content.trim());
+      if (pendingFile) form.append('file', pendingFile);
+
+      await API.post('/messages/send', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       setContent('');
+      clearPendingFile();
       inputRef.current?.focus();
-    } catch (e) { console.error(e); }
-    finally { setSending(false); }
+    } catch (e) {
+      setFileError(e.response?.data?.message || 'Failed to send message');
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleTyping = (e) => {
@@ -103,7 +131,7 @@ const AdminMessages = () => {
     <Layout>
       <div style={{ display: 'flex', height: 'calc(100vh - 130px)', background: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
 
-        {/* Left — Conversation list */}
+        {/* Conversation list */}
         <div style={{ width: '280px', borderRight: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <div style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9' }}>
             <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: '700', color: '#1e293b' }}>Conversations</h3>
@@ -145,7 +173,7 @@ const AdminMessages = () => {
                       </div>
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {lastMessage ? lastMessage.content : 'No messages yet'}
+                      {lastMessage ? (lastMessage.content || `📎 ${lastMessage.attachment?.fileName || 'Attachment'}`) : 'No messages yet'}
                     </div>
                     <div style={{ marginTop: '4px' }}>
                       <StatusBadge status={school.currentStatus} size="sm" />
@@ -157,7 +185,7 @@ const AdminMessages = () => {
           </div>
         </div>
 
-        {/* Right — Chat window */}
+        {/* Chat window */}
         {!activeSchool ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: '0.75rem' }}>
             <div style={{ fontSize: '3rem' }}>💬</div>
@@ -167,7 +195,6 @@ const AdminMessages = () => {
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-            {/* Chat header */}
             <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#fafcff', flexShrink: 0 }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e8f0f9', color: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', flexShrink: 0 }}>
                 {activeSchool.schoolName[0]}
@@ -178,7 +205,6 @@ const AdminMessages = () => {
               </div>
             </div>
 
-            {/* Messages */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column' }}>
               {messages.length === 0 ? (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: '0.5rem' }}>
@@ -204,13 +230,15 @@ const AdminMessages = () => {
                             </div>
                           )}
                           <div style={{ maxWidth: '65%' }}>
-                            <div style={{ padding: '0.5rem 0.875rem', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px', background: isMe ? '#1e3a5f' : '#f1f5f9', color: isMe ? '#fff' : '#1e293b', fontSize: '0.875rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-                              {msg.content}
-                            </div>
+                            {msg.attachment ? (
+                              <AttachmentBubble msg={msg} isMe={isMe} />
+                            ) : (
+                              <div style={{ padding: '0.5rem 0.875rem', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px', background: isMe ? '#1e3a5f' : '#f1f5f9', color: isMe ? '#fff' : '#1e293b', fontSize: '0.875rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                                {msg.content}
+                              </div>
+                            )}
                             <div style={{ display: 'flex', gap: '4px', justifyContent: isMe ? 'flex-end' : 'flex-start', marginTop: '2px' }}>
-                              <span style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
-                                {new Date(msg.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
+                              <span style={{ fontSize: '0.62rem', color: '#94a3b8' }}>{new Date(msg.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                               {isMe && <span style={{ fontSize: '0.65rem', color: msg.isRead ? '#22c55e' : '#94a3b8' }}>{msg.isRead ? '✓✓' : '✓'}</span>}
                             </div>
                           </div>
@@ -233,15 +261,37 @@ const AdminMessages = () => {
 
             {/* Input */}
             <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid #f1f5f9', background: '#fafcff', flexShrink: 0 }}>
+
+              {fileError && (
+                <div style={{ marginBottom: '0.5rem', padding: '0.5rem 0.75rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.75rem', color: '#dc2626' }}>
+                  ⚠ {fileError}
+                </div>
+              )}
+
+              {pendingFile && (
+                <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: '#f0f6ff', border: '1px solid #bfdbfe', borderRadius: '8px' }}>
+                  <span style={{ fontSize: '1rem' }}>{PENDING_FILE_ICONS[getFileCategory(pendingFile.name)] || '📎'}</span>
+                  <span style={{ flex: 1, fontSize: '0.78rem', fontWeight: '600', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pendingFile.name}</span>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{(pendingFile.size / 1024).toFixed(0)} KB</span>
+                  <button type="button" onClick={clearPendingFile} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem' }}>✕</button>
+                </div>
+              )}
+
               <form onSubmit={handleSend} style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-end' }}>
+                <input ref={fileRef} type="file" accept={ACCEPT_TYPES} onChange={handleFileSelect} style={{ display: 'none' }} />
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  title="Attach image, PDF, Word, or Excel file"
+                  style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f1f5f9', border: 'none', cursor: 'pointer', fontSize: '1.1rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  📎
+                </button>
                 <textarea ref={inputRef} value={content} onChange={handleTyping}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
                   placeholder="Type a message..."
                   rows={1}
                   style={{ flex: 1, padding: '0.625rem 0.875rem', border: '1.5px solid #e2e8f0', borderRadius: '20px', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none', resize: 'none', maxHeight: '100px', overflowY: 'auto' }}
                 />
-                <button type="submit" disabled={!content.trim() || sending}
-                  style={{ width: '40px', height: '40px', borderRadius: '50%', background: !content.trim() ? '#e2e8f0' : '#1e3a5f', border: 'none', cursor: !content.trim() ? 'not-allowed' : 'pointer', fontSize: '1.1rem', flexShrink: 0, transition: 'background 0.15s' }}>
+                <button type="submit" disabled={(!content.trim() && !pendingFile) || sending}
+                  style={{ width: '40px', height: '40px', borderRadius: '50%', background: (!content.trim() && !pendingFile) ? '#e2e8f0' : '#1e3a5f', border: 'none', cursor: (!content.trim() && !pendingFile) ? 'not-allowed' : 'pointer', fontSize: '1.1rem', flexShrink: 0 }}>
                   {sending ? '⏳' : '➤'}
                 </button>
               </form>

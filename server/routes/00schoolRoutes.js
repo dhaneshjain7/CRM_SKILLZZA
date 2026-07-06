@@ -15,37 +15,40 @@ const {
   getStats,
 } = require('../controllers/schoolController');
 
-const { protect }                              = require('../middleware/authMiddleware');
-const { isSuperAdmin, isAdmin, canAccessSchool } = require('../middleware/roleMiddleware');
+const { protect }                                        = require('../middleware/authMiddleware');
+const { isSuperAdmin, isAdmin, isSchoolUser, canAccessSchool } = require('../middleware/roleMiddleware');
 
 // All routes require authentication
 router.use(protect);
 
-// ── Stats (before /:id to avoid route conflict) ───────────────────────────────
-router.get('/stats', isAdmin, getStats);                         // GET  /api/schools/stats
+// ── Stats ─────────────────────────────────────────────────────────────────────
+router.get('/stats', isAdmin, getStats);
 
 // ── Collection routes ─────────────────────────────────────────────────────────
-router.get('/',  getSchools);                                    // GET  /api/schools
-router.post('/', isAdmin, createSchool);                         // POST /api/schools
+router.get('/',  getSchools);
+router.post('/', isAdmin, createSchool);
 
 // ── Single school routes ──────────────────────────────────────────────────────
-router.get   ('/:id', canAccessSchool, getSchoolById);           // GET  /api/schools/:id
-router.put   ('/:id', isAdmin, canAccessSchool, updateSchool);   // PUT  /api/schools/:id
+router.get('/:id', canAccessSchool, getSchoolById);
 
-// ── Status ────────────────────────────────────────────────────────────────────
-router.put('/:id/status', isAdmin, canAccessSchool, updateSchoolStatus); // PUT /api/schools/:id/status
+// PUT /:id — Admin/SuperAdmin can update anything
+//            School user can update their own school profile only
+router.put('/:id', canAccessSchool, updateSchool);
+
+// ── Status (Admin only — school user cannot change their own status) ──────────
+router.put('/:id/status', isAdmin, canAccessSchool, updateSchoolStatus);
 
 // ── Admin assignment (SuperAdmin only) ───────────────────────────────────────
-router.put('/:id/assign-admin', isSuperAdmin, assignAdmin);      // PUT  /api/schools/:id/assign-admin
+router.put('/:id/assign-admin', isSuperAdmin, assignAdmin);
 
 // ── Archive (SuperAdmin only) ─────────────────────────────────────────────────
-router.put('/:id/archive', isSuperAdmin, archiveSchool);         // PUT  /api/schools/:id/archive
+router.put('/:id/archive', isSuperAdmin, archiveSchool);
 
 // ── History & audit ───────────────────────────────────────────────────────────
-router.get('/:id/status-history', canAccessSchool, getStatusHistory); // GET /api/schools/:id/status-history
-router.get('/:id/audit-trail',    isAdmin, getAuditTrail);            // GET /api/schools/:id/audit-trail
+router.get('/:id/status-history', canAccessSchool, getStatusHistory);
+router.get('/:id/audit-trail',    isAdmin, getAuditTrail);
 
-// ── Notes (admin-only, not visible to school_user) ────────────────────────────
-router.post('/:id/notes', isAdmin, canAccessSchool, addNote);    // POST /api/schools/:id/notes
+// ── Notes (Admin only) ────────────────────────────────────────────────────────
+router.post('/:id/notes', isAdmin, canAccessSchool, addNote);
 
 module.exports = router;

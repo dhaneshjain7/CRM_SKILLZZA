@@ -150,9 +150,12 @@ const statusReport = async (req, res) => {
 const growthReport = async (req, res) => {
   try {
     const { format = 'json', months = 12 } = req.query;
+    const numMonths = Number(months);
 
     const from = new Date();
-    from.setMonth(from.getMonth() - Number(months));
+    from.setMonth(from.getMonth() - (numMonths - 1));
+    from.setDate(1);
+    from.setHours(0, 0, 0, 0);
 
     const filter = { createdAt: { $gte: from }, isDeleted: false };
     if (req.user.role === 'admin') filter.assignedAdmin = req.user._id;
@@ -175,14 +178,34 @@ const growthReport = async (req, res) => {
     ]);
 
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const rows = monthly.map(m => ({
-      'Year':      m._id.year,
-      'Month':     MONTHS[m._id.month - 1],
-      'Added':     m.count,
-      'Approved':  m.approved,
-      'Completed': m.completed,
-      'Rejected':  m.rejected,
-    }));
+
+    // Build a lookup for months that have data
+    const dataByKey = {};
+    monthly.forEach(m => {
+      dataByKey[`${m._id.year}-${m._id.month}`] = m;
+    });
+
+    // Generate a continuous sequence of months from `from` to now, filling zeros where no data exists
+    const rows = [];
+    const cursor = new Date(from);
+    const now = new Date();
+    while (cursor <= now) {
+      const year  = cursor.getFullYear();
+      const month = cursor.getMonth() + 1;
+      const key   = `${year}-${month}`;
+      const m     = dataByKey[key];
+
+      rows.push({
+        'Year':      year,
+        'Month':     MONTHS[month - 1],
+        'Added':     m?.count     || 0,
+        'Approved':  m?.approved  || 0,
+        'Completed': m?.completed || 0,
+        'Rejected':  m?.rejected  || 0,
+      });
+
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
 
     if (format === 'csv') {
       return sendCSV(res, 'growth_report', Object.keys(rows[0] || {}), rows);

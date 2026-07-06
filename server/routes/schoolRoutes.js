@@ -13,6 +13,8 @@ const {
   getAuditTrail,
   addNote,
   getStats,
+  resetSchoolPassword,
+  createSchoolLogin,
 } = require('../controllers/schoolController');
 
 const { protect }                                        = require('../middleware/authMiddleware');
@@ -50,5 +52,9 @@ router.get('/:id/audit-trail',    isAdmin, getAuditTrail);
 
 // ── Notes (Admin only) ────────────────────────────────────────────────────────
 router.post('/:id/notes', isAdmin, canAccessSchool, addNote);
+
+// ── School Portal Login Management (Admin/SuperAdmin) ─────────────────────────
+router.post('/:id/create-login',          isAdmin, createSchoolLogin);       // POST /api/schools/:id/create-login
+router.put('/:id/reset-login-password',   isAdmin, resetSchoolPassword);     // PUT  /api/schools/:id/reset-login-password
 
 module.exports = router;

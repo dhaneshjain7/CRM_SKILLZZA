@@ -51,6 +51,7 @@ const createSchool = async (req, res) => {
       board, establishedYear, website,
       registrationNumber, studentCount,
       staffCount, tags, assignedAdmin,
+      loginEmail, loginPassword,
     } = req.body;
 
     if (!schoolName || !email || !phone) {
@@ -67,6 +68,24 @@ const createSchool = async (req, res) => {
         success: false,
         message: 'A school with this email already exists.',
       });
+    }
+
+    // If login credentials provided, validate + check for existing user account
+    let schoolUserId = null;
+    if (loginEmail && loginPassword) {
+      if (loginPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Login password must be at least 6 characters.',
+        });
+      }
+      const existingUser = await User.findOne({ email: loginEmail.toLowerCase().trim() });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'A user account with this login email already exists.',
+        });
+      }
     }
 
     const school = await School.create({
@@ -87,6 +106,32 @@ const createSchool = async (req, res) => {
       assignedAdmin: assignedAdmin || null,
       currentStatus: 'New',
     });
+
+    // Create school_user login account if credentials were provided
+    let createdLoginInfo = null;
+    if (loginEmail && loginPassword) {
+      const schoolUser = await User.create({
+        name:     schoolName,
+        email:    loginEmail.toLowerCase().trim(),
+        password: loginPassword,
+        role:     'school_user',
+        phone:    phone,
+        isActive: true,
+      });
+
+      school.schoolUser = schoolUser._id;
+      await school.save();
+
+      createdLoginInfo = { email: schoolUser.email };
+
+      await logActivity({
+        user:          req.user,
+        action:        'School Created',
+        description:   `Created school portal login for: ${schoolName} (${schoolUser.email})`,
+        relatedSchool: school._id,
+        req,
+      });
+    }
 
     // First status history entry
     await SchoolStatusHistory.create({
@@ -116,7 +161,7 @@ const createSchool = async (req, res) => {
       req,
     });
 
-    res.status(201).json({ success: true, school });
+    res.status(201).json({ success: true, school, loginCreated: createdLoginInfo });
   } catch (err) {
     console.error('createSchool error:', err);
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -577,6 +622,7 @@ const getStats = async (req, res) => {
       total,
       byStatus,
       recentSchools,
+      totalAdmins,
     ] = await Promise.all([
       School.countDocuments(filter),
       School.aggregate([
@@ -588,6 +634,7 @@ const getStats = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(5)
         .populate('assignedAdmin', 'name'),
+      User.countDocuments({ role: 'admin', isDeleted: false }),
     ]);
 
     // Format status counts into object
@@ -602,10 +649,92 @@ const getStats = async (req, res) => {
         total,
         statusCounts,
         recentSchools,
+        totalAdmins,
       },
     });
   } catch (err) {
     console.error('getStats error:', err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+// ── @PUT /api/schools/:id/reset-login-password ───────────────────────────────
+// Admin/SuperAdmin resets the school portal login password
+const resetSchoolPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+    }
+
+    const school = await School.findById(req.params.id);
+    if (!school) return res.status(404).json({ success: false, message: 'School not found.' });
+    if (!school.schoolUser) return res.status(400).json({ success: false, message: 'This school has no portal login account yet.' });
+
+    const schoolUser = await User.findById(school.schoolUser).select('+password');
+    if (!schoolUser) return res.status(404).json({ success: false, message: 'School login account not found.' });
+
+    schoolUser.password = newPassword;
+    await schoolUser.save();
+
+    await logActivity({
+      user:          req.user,
+      action:        'Password Changed',
+      description:   `Reset portal login password for school: ${school.schoolName}`,
+      relatedSchool: school._id,
+      req,
+    });
+
+    res.status(200).json({ success: true, message: 'School login password reset successfully.' });
+  } catch (err) {
+    console.error('resetSchoolPassword error:', err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+// ── @POST /api/schools/:id/create-login ───────────────────────────────────────
+// Create a portal login for a school that doesn't have one yet
+const createSchoolLogin = async (req, res) => {
+  try {
+    const { loginEmail, loginPassword } = req.body;
+
+    if (!loginEmail || !loginPassword) {
+      return res.status(400).json({ success: false, message: 'Login email and password are required.' });
+    }
+    if (loginPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
+    const school = await School.findById(req.params.id);
+    if (!school) return res.status(404).json({ success: false, message: 'School not found.' });
+    if (school.schoolUser) return res.status(400).json({ success: false, message: 'This school already has a portal login account.' });
+
+    const existingUser = await User.findOne({ email: loginEmail.toLowerCase().trim() });
+    if (existingUser) return res.status(400).json({ success: false, message: 'A user account with this email already exists.' });
+
+    const schoolUser = await User.create({
+      name:     school.schoolName,
+      email:    loginEmail.toLowerCase().trim(),
+      password: loginPassword,
+      role:     'school_user',
+      phone:    school.phone,
+      isActive: true,
+    });
+
+    school.schoolUser = schoolUser._id;
+    await school.save();
+
+    await logActivity({
+      user:          req.user,
+      action:        'School Created',
+      description:   `Created portal login for school: ${school.schoolName} (${schoolUser.email})`,
+      relatedSchool: school._id,
+      req,
+    });
+
+    res.status(201).json({ success: true, message: 'School login created successfully.', loginEmail: schoolUser.email });
+  } catch (err) {
+    console.error('createSchoolLogin error:', err);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -622,4 +751,6 @@ module.exports = {
   getAuditTrail,
   addNote,
   getStats,
+  resetSchoolPassword,
+  createSchoolLogin,
 };

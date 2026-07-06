@@ -25,6 +25,19 @@ const SchoolDetail = () => {
   const [audit,   setAudit]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab,     setTab]     = useState('overview');
+  const [admins,  setAdmins]  = useState([]);
+  const [reassigning, setReassigning] = useState(false);
+  const [selectedAdminId, setSelectedAdminId] = useState('');
+
+  // Portal access state
+  const [showCreateLogin, setShowCreateLogin] = useState(false);
+  const [newLoginEmail, setNewLoginEmail]     = useState('');
+  const [newLoginPassword, setNewLoginPassword] = useState('');
+  const [creatingLogin, setCreatingLogin]     = useState(false);
+
+  const [showResetPw, setShowResetPw]         = useState(false);
+  const [resetPassword, setResetPassword]     = useState('');
+  const [resetting, setResetting]             = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [msg,     setMsg]     = useState('');
 
@@ -53,8 +66,68 @@ const SchoolDetail = () => {
       initForm(schoolRes.data.school);
       setHistory(histRes.data.history || []);
       setAudit(auditRes.data.logs || []);
+
+      // SuperAdmin can reassign — fetch admin list
+      if (user?.role === 'superadmin') {
+        try {
+          const adminsRes = await API.get('/admins?limit=100');
+          setAdmins(adminsRes.data.admins || []);
+        } catch (e) { /* silent */ }
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleReassignAdmin = async () => {
+    if (!selectedAdminId) return;
+    setReassigning(true);
+    try {
+      await API.put(`/schools/${schoolId}/assign-admin`, { adminId: selectedAdminId });
+      await fetchAll();
+      setSelectedAdminId('');
+      showMsg('✅ Admin assigned successfully!');
+    } catch (e) {
+      showMsg('❌ ' + (e.response?.data?.message || 'Failed to assign admin'));
+    } finally {
+      setReassigning(false);
+    }
+  };
+
+  const handleCreateLogin = async (e) => {
+    e.preventDefault();
+    if (!newLoginEmail || !newLoginPassword) return;
+    setCreatingLogin(true);
+    try {
+      await API.post(`/schools/${schoolId}/create-login`, { loginEmail: newLoginEmail, loginPassword: newLoginPassword });
+      await fetchAll();
+      setShowCreateLogin(false);
+      showMsg(`✅ Portal login created: ${newLoginEmail}`);
+      setNewLoginEmail('');
+      setNewLoginPassword('');
+    } catch (e) {
+      showMsg('❌ ' + (e.response?.data?.message || 'Failed to create login'));
+    } finally {
+      setCreatingLogin(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetPassword || resetPassword.length < 6) {
+      showMsg('❌ Password must be at least 6 characters');
+      return;
+    }
+    setResetting(true);
+    try {
+      await API.put(`/schools/${schoolId}/reset-login-password`, { newPassword: resetPassword });
+      showMsg('✅ Password reset successfully!');
+      setShowResetPw(false);
+      setResetPassword('');
+    } catch (e) {
+      showMsg('❌ ' + (e.response?.data?.message || 'Failed to reset password'));
+    } finally {
+      setResetting(false);
+    }
   };
 
   const initForm = (s) => {
@@ -261,6 +334,131 @@ const SchoolDetail = () => {
             { label:'Designation', value: school.management?.designation || '—' },
             { label:'Phone',       value: school.management?.phone       || '—' },
           ]} />
+
+          {/* Assigned Admin */}
+          <div style={card}>
+            <h3 style={{ margin:'0 0 1rem', fontSize:'0.9rem', fontWeight:'700', color:'#1e293b' }}>👤 Assigned Admin</h3>
+            {school.assignedAdmin ? (
+              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginBottom: user?.role === 'superadmin' ? '1rem' : 0 }}>
+                <div style={{ width:'40px', height:'40px', borderRadius:'10px', background:'#e8f0f9', color:'#1e3a5f', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'800', fontSize:'1rem', flexShrink:0 }}>
+                  {school.assignedAdmin.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div>
+                  <div style={{ fontSize:'0.875rem', fontWeight:'700', color:'#1e293b' }}>{school.assignedAdmin.name}</div>
+                  <div style={{ fontSize:'0.75rem', color:'#94a3b8' }}>{school.assignedAdmin.email}</div>
+                  {school.assignedAdmin.phone && <div style={{ fontSize:'0.72rem', color:'#94a3b8' }}>{school.assignedAdmin.phone}</div>}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom: user?.role === 'superadmin' ? '1rem' : 0, padding:'0.75rem', background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:'8px' }}>
+                <span style={{ fontSize:'1rem' }}>⚠️</span>
+                <span style={{ fontSize:'0.82rem', color:'#9a3412', fontWeight:'600' }}>No admin assigned yet</span>
+              </div>
+            )}
+
+            {/* SuperAdmin can reassign */}
+            {user?.role === 'superadmin' && (
+              <div style={{ paddingTop: school.assignedAdmin || true ? '0' : '0' }}>
+                <label style={{ fontSize:'0.72rem', fontWeight:'600', color:'#374151', display:'block', marginBottom:'0.4rem' }}>
+                  {school.assignedAdmin ? 'Reassign to a different admin' : 'Assign an admin'}
+                </label>
+                <div style={{ display:'flex', gap:'0.5rem' }}>
+                  <select value={selectedAdminId} onChange={e => setSelectedAdminId(e.target.value)}
+                    style={{ flex:1, padding:'0.5rem 0.7rem', border:'1.5px solid #e2e8f0', borderRadius:'7px', fontSize:'0.8rem', outline:'none', fontFamily:'inherit', background:'#fff' }}>
+                    <option value="">Select admin...</option>
+                    {admins.filter(a => a._id !== school.assignedAdmin?._id).map(a => (
+                      <option key={a._id} value={a._id}>{a.name} ({a.stats?.totalSchools || 0} schools)</option>
+                    ))}
+                  </select>
+                  <button onClick={handleReassignAdmin} disabled={!selectedAdminId || reassigning}
+                    style={{ padding:'0.5rem 1rem', background: !selectedAdminId ? '#94a3b8' : '#1e3a5f', border:'none', borderRadius:'7px', color:'#fff', fontWeight:'600', fontSize:'0.78rem', cursor: !selectedAdminId ? 'not-allowed' : 'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                    {reassigning ? 'Assigning...' : 'Assign'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Portal Access */}
+          <div style={card}>
+            <h3 style={{ margin:'0 0 1rem', fontSize:'0.9rem', fontWeight:'700', color:'#1e293b' }}>🔐 School Portal Access</h3>
+
+            {school.schoolUser ? (
+              <>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'1rem' }}>
+                  <div style={{ width:'40px', height:'40px', borderRadius:'10px', background:'#e8f5f1', color:'#1e5f4e', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'800', fontSize:'1rem', flexShrink:0 }}>
+                    {school.schoolUser.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:'0.875rem', fontWeight:'700', color:'#1e293b' }}>{school.schoolUser.email}</div>
+                    <div style={{ fontSize:'0.75rem', color:'#065f46', background:'#d1fae5', display:'inline-block', padding:'1px 8px', borderRadius:'10px', fontWeight:'600', marginTop:'2px' }}>Portal Active</div>
+                  </div>
+                </div>
+
+                {!showResetPw ? (
+                  <button onClick={() => setShowResetPw(true)}
+                    style={{ padding:'0.5rem 1rem', background:'#f1f5f9', border:'none', borderRadius:'7px', cursor:'pointer', fontSize:'0.78rem', fontWeight:'600', color:'#475569', fontFamily:'inherit' }}>
+                    🔑 Reset Password
+                  </button>
+                ) : (
+                  <form onSubmit={handleResetPassword}>
+                    <label style={{ fontSize:'0.72rem', fontWeight:'600', color:'#374151', display:'block', marginBottom:'0.4rem' }}>New Password</label>
+                    <div style={{ display:'flex', gap:'0.5rem' }}>
+                      <input type="text" value={resetPassword} onChange={e => setResetPassword(e.target.value)}
+                        placeholder="Min. 6 characters" autoFocus
+                        style={{ flex:1, padding:'0.5rem 0.7rem', border:'1.5px solid #e2e8f0', borderRadius:'7px', fontSize:'0.8rem', outline:'none', fontFamily:'inherit' }} />
+                      <button type="submit" disabled={resetting || resetPassword.length < 6}
+                        style={{ padding:'0.5rem 1rem', background: resetPassword.length < 6 ? '#94a3b8' : '#1e3a5f', border:'none', borderRadius:'7px', color:'#fff', fontWeight:'600', fontSize:'0.78rem', cursor: resetPassword.length < 6 ? 'not-allowed' : 'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                        {resetting ? 'Saving...' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowResetPw(false); setResetPassword(''); }}
+                        style={{ padding:'0.5rem 0.75rem', background:'#f1f5f9', border:'none', borderRadius:'7px', color:'#64748b', fontSize:'0.78rem', cursor:'pointer', fontFamily:'inherit' }}>
+                        ✕
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'1rem', padding:'0.75rem', background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:'8px' }}>
+                  <span style={{ fontSize:'1rem' }}>⚠️</span>
+                  <span style={{ fontSize:'0.82rem', color:'#9a3412', fontWeight:'600' }}>No portal login created yet</span>
+                </div>
+
+                {!showCreateLogin ? (
+                  <button onClick={() => { setShowCreateLogin(true); setNewLoginEmail(school.email || ''); }}
+                    style={{ padding:'0.5rem 1rem', background:'#1e3a5f', border:'none', borderRadius:'7px', cursor:'pointer', fontSize:'0.78rem', fontWeight:'600', color:'#fff', fontFamily:'inherit' }}>
+                    + Create Portal Login
+                  </button>
+                ) : (
+                  <form onSubmit={handleCreateLogin}>
+                    <div style={{ marginBottom:'0.625rem' }}>
+                      <label style={{ fontSize:'0.72rem', fontWeight:'600', color:'#374151', display:'block', marginBottom:'0.3rem' }}>Login Email</label>
+                      <input type="email" value={newLoginEmail} onChange={e => setNewLoginEmail(e.target.value)}
+                        style={{ width:'100%', boxSizing:'border-box', padding:'0.5rem 0.7rem', border:'1.5px solid #e2e8f0', borderRadius:'7px', fontSize:'0.8rem', outline:'none', fontFamily:'inherit' }} />
+                    </div>
+                    <div style={{ marginBottom:'0.75rem' }}>
+                      <label style={{ fontSize:'0.72rem', fontWeight:'600', color:'#374151', display:'block', marginBottom:'0.3rem' }}>Password</label>
+                      <input type="text" value={newLoginPassword} onChange={e => setNewLoginPassword(e.target.value)}
+                        placeholder="Min. 6 characters"
+                        style={{ width:'100%', boxSizing:'border-box', padding:'0.5rem 0.7rem', border:'1.5px solid #e2e8f0', borderRadius:'7px', fontSize:'0.8rem', outline:'none', fontFamily:'inherit' }} />
+                    </div>
+                    <div style={{ display:'flex', gap:'0.5rem' }}>
+                      <button type="submit" disabled={creatingLogin || !newLoginEmail || newLoginPassword.length < 6}
+                        style={{ padding:'0.5rem 1rem', background: (!newLoginEmail || newLoginPassword.length < 6) ? '#94a3b8' : '#1e3a5f', border:'none', borderRadius:'7px', color:'#fff', fontWeight:'600', fontSize:'0.78rem', cursor: (!newLoginEmail || newLoginPassword.length < 6) ? 'not-allowed' : 'pointer', fontFamily:'inherit' }}>
+                        {creatingLogin ? 'Creating...' : 'Create Login'}
+                      </button>
+                      <button type="button" onClick={() => setShowCreateLogin(false)}
+                        style={{ padding:'0.5rem 0.75rem', background:'#f1f5f9', border:'none', borderRadius:'7px', color:'#64748b', fontSize:'0.78rem', cursor:'pointer', fontFamily:'inherit' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 

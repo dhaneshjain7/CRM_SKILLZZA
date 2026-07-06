@@ -10,6 +10,11 @@ const AddSchoolModal = ({ onClose, onCreated }) => {
     'address.street': '', 'address.city': '', 'address.district': '', 'address.state': '', 'address.pincode': '',
     'principal.name': '', 'principal.email': '', 'principal.phone': '',
   });
+  const [createLogin, setCreateLogin] = useState(true);
+  const [loginEmail, setLoginEmail]       = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword]   = useState(false);
+  const [successInfo, setSuccessInfo]     = useState(null);
 
   const handleChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -20,6 +25,17 @@ const AddSchoolModal = ({ onClose, onCreated }) => {
     if (!form.schoolName || !form.email || !form.phone) {
       setError('School Name, Email and Phone are required.');
       return;
+    }
+
+    if (createLogin) {
+      if (!loginEmail || !loginPassword) {
+        setError('Portal login email and password are required to create school access.');
+        return;
+      }
+      if (loginPassword.length < 6) {
+        setError('Portal password must be at least 6 characters.');
+        return;
+      }
     }
 
     setSaving(true);
@@ -48,17 +64,61 @@ const AddSchoolModal = ({ onClose, onCreated }) => {
           email: form['principal.email'],
           phone: form['principal.phone'],
         },
+        ...(createLogin ? { loginEmail, loginPassword } : {}),
       };
 
       const res = await API.post('/schools', payload);
-      onCreated?.(res.data.school);
-      onClose();
+
+      if (createLogin) {
+        // Show success screen with credentials instead of closing immediately
+        setSuccessInfo({ school: res.data.school, loginEmail });
+      } else {
+        onCreated?.(res.data.school);
+        onClose();
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create school.');
     } finally {
       setSaving(false);
     }
   };
+
+  // ── Success screen — shown after school + login created ──────────────────────
+  if (successInfo) {
+    return (
+      <div style={overlay} onClick={() => { onCreated?.(successInfo.school); onClose(); }}>
+        <div style={{ ...modal, maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+          <div style={{ padding: '2rem 1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: '800', color: '#1e293b' }}>School Created Successfully!</h3>
+            <p style={{ margin: '0 0 1.5rem', fontSize: '0.85rem', color: '#64748b' }}>
+              Share these portal login credentials with <strong>{successInfo.school.schoolName}</strong>
+            </p>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1rem', textAlign: 'left', marginBottom: '1.5rem' }}>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '2px' }}>Login Email</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1e293b' }}>{successInfo.loginEmail}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '2px' }}>Password</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1e293b' }}>{loginPassword}</div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
+              ⚠️ This password won't be shown again. Copy it now, or reset it later from the school's detail page.
+            </p>
+
+            <button onClick={() => { onCreated?.(successInfo.school); onClose(); }}
+              style={{ ...saveBtn, width: '100%' }}>
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -124,6 +184,51 @@ const AddSchoolModal = ({ onClose, onCreated }) => {
             </Row>
             <Field label="Principal Phone" name="principal.phone" value={form['principal.phone']} onChange={handleChange} fullWidth />
           </Section>
+
+          {/* Portal Access */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', paddingBottom: '0.5rem', borderBottom: '2px solid #e8f0f9' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                🔐 School Portal Access
+              </span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.78rem', color: '#374151', fontWeight: '600' }}>
+                <input type="checkbox" checked={createLogin} onChange={e => setCreateLogin(e.target.checked)} style={{ cursor: 'pointer' }} />
+                Create login now
+              </label>
+            </div>
+
+            {createLogin ? (
+              <>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 0.75rem' }}>
+                  Set up the school's dashboard login. They'll be able to reset their own password later.
+                </p>
+                <Row>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#374151' }}>Login Email *</label>
+                    <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
+                      placeholder="school@example.com"
+                      style={{ padding: '0.55rem 0.75rem', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '0.875rem', outline: 'none', fontFamily: 'inherit', color: '#1e293b', width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#374151' }}>Password *</label>
+                    <div style={{ position: 'relative' }}>
+                      <input type={showPassword ? 'text' : 'password'} value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
+                        placeholder="Min. 6 characters"
+                        style={{ padding: '0.55rem 2.25rem 0.55rem 0.75rem', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '0.875rem', outline: 'none', fontFamily: 'inherit', color: '#1e293b', width: '100%', boxSizing: 'border-box' }} />
+                      <button type="button" onClick={() => setShowPassword(p => !p)}
+                        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem' }}>
+                        {showPassword ? '🙈' : '👁'}
+                      </button>
+                    </div>
+                  </div>
+                </Row>
+              </>
+            ) : (
+              <div style={{ padding: '0.75rem 1rem', background: '#fff8f0', border: '1px solid #fed7aa', borderRadius: '8px', fontSize: '0.78rem', color: '#9a3412' }}>
+                No login will be created. You can add portal access later from the school's detail page.
+              </div>
+            )}
+          </div>
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', marginTop: '0.5rem' }}>
