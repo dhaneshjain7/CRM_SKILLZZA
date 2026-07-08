@@ -68,6 +68,32 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // Role-aware Google login — routes to the correct backend endpoint per role.
+  // school_user → /auth/google-login  (existing, may auto-create)
+  // admin       → /auth/google-login/admin
+  // superadmin  → /auth/google-login/super-admin
+  const loginWithGoogleForRole = useCallback(async (token, role) => {
+    const endpointMap = {
+      school_user: '/auth/google-login',
+      admin:       '/auth/google-login/admin',
+      superadmin:  '/auth/google-login/super-admin',
+    };
+    const endpoint = endpointMap[role] || '/auth/google-login';
+
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const { data } = await API.post(endpoint, { token });
+      localStorage.setItem('accessToken', data.accessToken);
+      dispatch({ type: 'LOGIN_SUCCESS', payload: data.user });
+      return { success: true, user: data.user };
+    } catch (err) {
+      const message = err.response?.data?.message || 'Google login failed. Please try again.';
+      dispatch({ type: 'SET_ERROR', payload: message });
+      return { success: false, message };
+    }
+  }, []);
+
+
   const logout = useCallback(async () => {
     try { await API.post('/auth/logout'); } catch {}
     finally {
@@ -85,7 +111,7 @@ export const AuthProvider = ({ children }) => {
   const isSchoolUser = state.user?.role === 'school_user';
 
   return (
-    <AuthContext.Provider value={{ ...state, login, loginWithGoogle, logout, updateUser, isSuperAdmin, isAdmin, isSchoolUser }}>
+    <AuthContext.Provider value={{ ...state, login, loginWithGoogle, loginWithGoogleForRole, logout, updateUser, isSuperAdmin, isAdmin, isSchoolUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -219,7 +219,7 @@ const changePassword = async (req, res) => {
   }
 };
 
-// ── @POST /api/auth/google-login ──────────────────────────────────────────────
+// ── @POST /api/auth/google-login  (School User — unchanged, auto-creates if new) ──
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
@@ -336,4 +336,112 @@ const googleLogin = async (req, res) => {
   }
 };
 
-module.exports = { login, refreshToken, logout, getMe, changePassword, googleLogin };
+// ── Shared helper: Google login for Admin / Super Admin (no auto-create) ──────
+/**
+ * Factory that returns an Express handler enforcing a specific role.
+ * - Never creates a new user.
+ * - Returns 404 if email is not registered.
+ * - Returns 403 if role doesn't match or account is deactivated.
+ */
+const googleLoginForRole = (allowedRole) => async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google ID token is required.',
+      });
+    }
+
+    // Verify Google ID token
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.error('Google token verification failed:', verifyErr);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid Google token.',
+      });
+    }
+
+    const { email, sub: googleId, picture } = payload;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Look up the user — never create one
+    const user = await User.findOne({ email: cleanEmail });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found. Please contact the administrator.',
+      });
+    }
+
+    // Enforce role
+    if (user.role !== allowedRole) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. This login is for ${allowedRole.replace('_', ' ')} accounts only.`,
+      });
+    }
+
+    // Check account is active
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact support.',
+      });
+    }
+
+    // Link Google ID / avatar if not yet set
+    let updated = false;
+    if (!user.googleId) { user.googleId = googleId; updated = true; }
+    if (!user.avatar)   { user.avatar   = picture;  updated = true; }
+    if (!user.photo)    { user.photo    = picture;  updated = true; }
+    if (updated) await user.save();
+
+    // Update last login + login history
+    user.lastLogin = new Date();
+    user.loginHistory.unshift({
+      ip:      req.ip,
+      device:  req.headers['user-agent']?.split(' ')[0] || 'Unknown',
+      browser: req.headers['user-agent'] || 'Unknown',
+      loginAt: new Date(),
+    });
+    if (user.loginHistory.length > 10) user.loginHistory = user.loginHistory.slice(0, 10);
+    await user.save();
+
+    await logActivity({
+      user,
+      action:      'Google Login',
+      description: `${user.name} logged in via Google as ${allowedRole}`,
+      req,
+    });
+
+    await sendTokens(user, 200, res, req);
+  } catch (err) {
+    console.error(`Google login error (${allowedRole}):`, err);
+    res.status(500).json({ success: false, message: 'Server error during Google login.' });
+  }
+};
+
+// Role-specific Google login handlers
+const googleLoginAdmin      = googleLoginForRole('admin');
+const googleLoginSuperAdmin = googleLoginForRole('superadmin');
+
+module.exports = {
+  login,
+  refreshToken,
+  logout,
+  getMe,
+  changePassword,
+  googleLogin,          // school_user (unchanged)
+  googleLoginAdmin,     // admin only
+  googleLoginSuperAdmin, // superadmin only
+};

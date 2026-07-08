@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 
 const LoginPage = ({ roleConfig }) => {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogleForRole } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
 
@@ -21,16 +21,11 @@ const LoginPage = ({ roleConfig }) => {
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     setError('');
-    const result = await loginWithGoogle(credentialResponse.credential);
+    const result = await loginWithGoogleForRole(credentialResponse.credential, roleConfig.role);
     setLoading(false);
 
     if (!result.success) {
       setError(result.message);
-      return;
-    }
-
-    if (result.user.role !== roleConfig.role && roleConfig.role !== 'any') {
-      setError(`This login is for ${roleConfig.label} accounts only.`);
       return;
     }
 
@@ -136,28 +131,26 @@ const LoginPage = ({ roleConfig }) => {
           </button>
         </form>
 
-        {roleConfig.role === 'school_user' && (
-          <>
-            <div style={s.separator}>
-              <span style={s.separatorLine}></span>
-              <span style={s.separatorText}>OR</span>
-              <span style={s.separatorLine}></span>
-            </div>
+        <>
+          <div style={s.separator}>
+            <span style={s.separatorLine}></span>
+            <span style={s.separatorText}>OR</span>
+            <span style={s.separatorLine}></span>
+          </div>
 
-            <div style={s.googleWrapper}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={handleGoogleError}
-                useOneTap={false}
-                theme="outline"
-                size="large"
-                width="348"
-                text="continue_with"
-                shape="rectangular"
-              />
-            </div>
-          </>
-        )}
+          <div style={s.googleWrapper}>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              useOneTap={false}
+              theme="outline"
+              size="large"
+              width="348"
+              text="continue_with"
+              shape="rectangular"
+            />
+          </div>
+        </>
 
         {/* Hint credentials for dev */}
         {roleConfig.hint && (
