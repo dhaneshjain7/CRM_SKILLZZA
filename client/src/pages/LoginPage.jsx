@@ -131,26 +131,28 @@ const LoginPage = ({ roleConfig }) => {
           </button>
         </form>
 
-        <>
-          <div style={s.separator}>
-            <span style={s.separatorLine}></span>
-            <span style={s.separatorText}>OR</span>
-            <span style={s.separatorLine}></span>
-          </div>
+        {roleConfig.role !== 'superadmin' && (
+          <>
+            <div style={s.separator}>
+              <span style={s.separatorLine}></span>
+              <span style={s.separatorText}>OR</span>
+              <span style={s.separatorLine}></span>
+            </div>
 
-          <div style={s.googleWrapper}>
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              useOneTap={false}
-              theme="outline"
-              size="large"
-              width="348"
-              text="continue_with"
-              shape="rectangular"
-            />
-          </div>
-        </>
+            <div style={s.googleWrapper}>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                useOneTap={false}
+                theme="outline"
+                size="large"
+                width="348"
+                text="continue_with"
+                shape="rectangular"
+              />
+            </div>
+          </>
+        )}
 
         {/* Hint credentials for dev */}
         {roleConfig.hint && (

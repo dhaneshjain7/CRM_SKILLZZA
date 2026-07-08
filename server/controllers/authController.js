@@ -432,8 +432,7 @@ const googleLoginForRole = (allowedRole) => async (req, res) => {
 };
 
 // Role-specific Google login handlers
-const googleLoginAdmin      = googleLoginForRole('admin');
-const googleLoginSuperAdmin = googleLoginForRole('superadmin');
+const googleLoginAdmin = googleLoginForRole('admin');
 
 module.exports = {
   login,
@@ -441,7 +440,6 @@ module.exports = {
   logout,
   getMe,
   changePassword,
-  googleLogin,          // school_user (unchanged)
-  googleLoginAdmin,     // admin only
-  googleLoginSuperAdmin, // superadmin only
+  googleLogin,      // school_user (unchanged)
+  googleLoginAdmin, // admin only
 };

@@ -76,7 +76,6 @@ export const AuthProvider = ({ children }) => {
     const endpointMap = {
       school_user: '/auth/google-login',
       admin:       '/auth/google-login/admin',
-      superadmin:  '/auth/google-login/super-admin',
     };
     const endpoint = endpointMap[role] || '/auth/google-login';
 
