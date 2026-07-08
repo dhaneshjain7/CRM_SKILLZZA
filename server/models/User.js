@@ -6,7 +6,14 @@ const userSchema = new mongoose.Schema(
   {
     name:  { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, minlength: 6, select: false },
+    password: {
+      type: String,
+      required: function() {
+        return this.provider === 'local';
+      },
+      minlength: 6,
+      select: false,
+    },
 
     role: {
       type: String,
@@ -17,6 +24,10 @@ const userSchema = new mongoose.Schema(
     phone:   { type: String, trim: true },
     photo:   { type: String, default: null },   // file path or URL
     address: { type: String, trim: true },
+
+    provider: { type: String, enum: ['local', 'google'], default: 'local' },
+    googleId: { type: String, default: null },
+    avatar:   { type: String, default: null },
 
     // Profile completion
     isProfileComplete: { type: Boolean, default: false },

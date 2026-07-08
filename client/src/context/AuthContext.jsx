@@ -54,6 +54,20 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const loginWithGoogle = useCallback(async (token) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const { data } = await API.post('/auth/google-login', { token });
+      localStorage.setItem('accessToken', data.accessToken);
+      dispatch({ type: 'LOGIN_SUCCESS', payload: data.user });
+      return { success: true, user: data.user };
+    } catch (err) {
+      const message = err.response?.data?.message || 'Google login failed. Please try again.';
+      dispatch({ type: 'SET_ERROR', payload: message });
+      return { success: false, message };
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try { await API.post('/auth/logout'); } catch {}
     finally {
@@ -71,7 +85,7 @@ export const AuthProvider = ({ children }) => {
   const isSchoolUser = state.user?.role === 'school_user';
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, updateUser, isSuperAdmin, isAdmin, isSchoolUser }}>
+    <AuthContext.Provider value={{ ...state, login, loginWithGoogle, logout, updateUser, isSuperAdmin, isAdmin, isSchoolUser }}>
       {children}
     </AuthContext.Provider>
   );

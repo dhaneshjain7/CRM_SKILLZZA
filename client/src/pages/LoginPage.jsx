@@ -4,9 +4,10 @@
 import { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { GoogleLogin } from '@react-oauth/google';
 
 const LoginPage = ({ roleConfig }) => {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
 
@@ -16,6 +17,34 @@ const LoginPage = ({ roleConfig }) => {
   const [showPass, setShowPass] = useState(false);
 
   const from = location.state?.from?.pathname || roleConfig.dashboardPath;
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setLoading(true);
+    setError('');
+    const result = await loginWithGoogle(credentialResponse.credential);
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+
+    if (result.user.role !== roleConfig.role && roleConfig.role !== 'any') {
+      setError(`This login is for ${roleConfig.label} accounts only.`);
+      return;
+    }
+
+    const paths = {
+      superadmin:  '/superadmin/dashboard',
+      admin:       '/admin/dashboard',
+      school_user: '/school/dashboard',
+    };
+    navigate(paths[result.user.role] || '/', { replace: true });
+  };
+
+  const handleGoogleError = () => {
+    setError('Google authentication failed. Please try again.');
+  };
 
   const handleChange = (e) => {
     setError('');
@@ -107,6 +136,29 @@ const LoginPage = ({ roleConfig }) => {
           </button>
         </form>
 
+        {roleConfig.role === 'school_user' && (
+          <>
+            <div style={s.separator}>
+              <span style={s.separatorLine}></span>
+              <span style={s.separatorText}>OR</span>
+              <span style={s.separatorLine}></span>
+            </div>
+
+            <div style={s.googleWrapper}>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                useOneTap={false}
+                theme="outline"
+                size="large"
+                width="348"
+                text="continue_with"
+                shape="rectangular"
+              />
+            </div>
+          </>
+        )}
+
         {/* Hint credentials for dev */}
         {roleConfig.hint && (
           <div style={s.hint}>
@@ -140,6 +192,10 @@ const s = {
   submitBtn: { color: '#fff', border: 'none', borderRadius: '8px', padding: '0.75rem', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', marginTop: '0.25rem', width: '100%', transition: 'opacity 0.2s' },
   hint:      { marginTop: '1rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '0.625rem 0.875rem', fontSize: '0.78rem', color: '#475569' },
   footer:    { marginTop: '1.5rem', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' },
+  separator: { display: 'flex', alignItems: 'center', gap: '10px', margin: '1.25rem 0' },
+  separatorLine: { flex: 1, height: '1px', background: '#e2e8f0' },
+  separatorText: { fontSize: '0.78rem', color: '#94a3b8', fontWeight: '600' },
+  googleWrapper: { display: 'flex', justifyContent: 'center', width: '100%', minHeight: '44px' },
 };
 
 export default LoginPage;
